@@ -1,8 +1,8 @@
 import { createDrawerNavigator } from '@react-navigation/drawer';
-import Agenda  from '../screens/Agenda';
-import Atendimento from '../screens/Atendimento';
-import DashBoard from '../screens/DashBoard';
-import Paciente from '../screens/Paciente';
+import Agenda  from '../screens/Agenda/Agenda';
+import Atendimento from '../screens/Atendimento/Atendimento';
+import DashBoard from '../screens/DashBoard/DashBoard';
+import Paciente from '../screens/Pacientes/Pacientes';
 
 const Drawer = createDrawerNavigator();
 
