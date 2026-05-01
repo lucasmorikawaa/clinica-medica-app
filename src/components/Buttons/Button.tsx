@@ -1,19 +1,23 @@
-import React from "react"
-import { TouchableHighlight, View, Text } from "react-native"
+import React from 'react';
+import { TouchableOpacity, Text, TouchableOpacityProps } from 'react-native';
 
-type Button = {
-    title?: string;
-    onPress?: () => void;
+import { styles } from './ButtonStyles';
+
+interface ButtonProps extends TouchableOpacityProps {
+  title: string;
+  variant?: 'primary' | 'outline';
 }
 
-export default function Button({title, onPress}: Button) {
-    return(
-        <View>
-            <TouchableHighlight
-                onPress={onPress}
-            >
-                {title && <Text>{title}</Text>}
-            </TouchableHighlight>
-        </View>
-    )
-}
+export const Button = ({ title, variant = 'primary', style, ...rest }: ButtonProps) => {
+  return (
+    <TouchableOpacity 
+      style={[styles.container, styles[variant], style]} 
+      activeOpacity={0.7}
+      {...rest}
+    >
+      <Text style={[styles.text, variant === 'outline' && styles.textOutline]}>
+        {title}
+      </Text>
+    </TouchableOpacity>
+  );
+};
