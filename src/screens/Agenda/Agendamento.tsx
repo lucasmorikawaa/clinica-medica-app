@@ -14,7 +14,7 @@ type Slot = {
 type Paciente = {
   id: string;
   nome: string;
-  telefone: string;
+  telefone?: string;
 };
 
 type Medico = {
@@ -23,16 +23,18 @@ type Medico = {
   especialidade: string;
 };
 
+type Consulta = {
+  id: string;
+  pacienteId: string;
+  medicoId: string;
+  horario: string;
+  status: 'M';
+};
+
 const pacientesMock: Paciente[] = [
   { id: '1', nome: 'Enzo Aguiar', telefone: '(11) 98765-4321' },
   { id: '2', nome: 'Lucas Keiji', telefone: '(11) 91234-5678' },
   { id: '3', nome: 'Lucas Vieira', telefone: '(11) 99999-0000' },
-  { id: '4', nome: 'Vitor Soler', telefone: '(11) 98888-1111' },
-  { id: '5', nome: 'Fernanda Lima', telefone: '(11) 97777-2222' },
-  { id: '6', nome: 'Roberto Alves', telefone: '(11) 96123-3333' },
-  { id: '7', nome: 'Juliana Mendes', telefone: '(11) 95555-4444' },
-  { id: '8', nome: 'Lucas Barbosa', telefone: '(11) 94444-5555' },
-  { id: '9', nome: 'Beatriz Rocha', telefone: '(11) 93333-6666' }
 ];
 
 const medicosMock: Medico[] = [
@@ -48,17 +50,15 @@ const slotsMock: Slot[] = [
   { horario: '09:30', status: 'L' },
   { horario: '10:00', status: 'M' },
   { horario: '10:30', status: 'L' },
-  { horario: '11:00', status: 'L' },
-  { horario: '11:30', status: 'L' },
   { horario: '14:00', status: 'M' },
   { horario: '14:30', status: 'L' },
-  { horario: '15:00', status: 'L' },
   { horario: '15:30', status: 'C' },
   { horario: '16:00', status: 'B' },
-  { horario: '16:30', status: 'L' },
   { horario: '17:00', status: 'X' },
   { horario: '17:30', status: 'L' },
 ];
+
+export const consultasGlobaisMock: Consulta[] = [];
 
 function formatarData(date: Date): string {
   const dia = String(date.getDate()).padStart(2, '0');
@@ -106,9 +106,10 @@ function getSlotTextStyle(status: SlotStatus, selecionado: boolean) {
   }
 }
 
-export default function Agendamento() {
-  const [pacienteSelecionado, setPacienteSelecionado] = useState<string>('');
-  const [medicoSelecionado, setMedicoSelecionado] = useState<string>('');
+export default function Agendamento({ navigation }: any) {
+  const [paciente, setPaciente] = useState<Paciente | null>(null);
+  const [medico, setMedico] = useState<Medico | null>(null);
+  
   const [slotSelecionado, setSlotSelecionado] = useState<string | null>(null);
   const [dataSelecionada, setDataSelecionada] = useState<Date>(new Date());
   const [mostrarCalendario, setMostrarCalendario] = useState<boolean>(false);
@@ -124,11 +125,35 @@ export default function Agendamento() {
   }
 
   function handleConfirmar() {
-    if (!pacienteSelecionado || !medicoSelecionado || !slotSelecionado) {
+    if (!paciente || !medico || !slotSelecionado) {
       Alert.alert('Atenção', 'Selecione paciente, médico e um horário disponível.');
       return;
     }
-    Alert.alert('Sucesso', 'Agendamento confirmado!');
+
+    const novaConsulta: Consulta = {
+      id: Math.random().toString(36).substring(2, 9),
+      pacienteId: paciente.id,
+      medicoId: medico.id,
+      horario: slotSelecionado,
+      status: 'M',
+    };
+
+    consultasGlobaisMock.push(novaConsulta);
+
+    Alert.alert(
+      'Sucesso',
+      'Consulta salva no estado global com status M!',
+      [
+        {
+          text: 'OK',
+          onPress: () => {
+            if (navigation) {
+              navigation.navigate('Confirmacao');
+            }
+          }
+        }
+      ]
+    );
   }
 
   return (
@@ -143,8 +168,11 @@ export default function Agendamento() {
           <Text style={styles.label}>Paciente</Text>
           <View style={styles.pickerWrapper}>
             <Picker
-              selectedValue={pacienteSelecionado}
-              onValueChange={setPacienteSelecionado}
+              selectedValue={paciente?.id || ''}
+              onValueChange={(itemValue) => {
+                const pacienteEncontrado = pacientesMock.find(p => p.id === itemValue);
+                setPaciente(pacienteEncontrado || null);
+              }}
               style={styles.picker}
             >
               <Picker.Item label="Selecione o paciente" value="" color="#aaa" />
@@ -157,9 +185,10 @@ export default function Agendamento() {
           <Text style={styles.label}>Médico / Especialidade</Text>
           <View style={styles.pickerWrapper}>
             <Picker
-              selectedValue={medicoSelecionado}
-              onValueChange={(val) => {
-                setMedicoSelecionado(val);
+              selectedValue={medico?.id || ''}
+              onValueChange={(itemValue) => {
+                const medicoEncontrado = medicosMock.find(m => m.id === itemValue);
+                setMedico(medicoEncontrado || null);
                 setSlotSelecionado(null);
               }}
               style={styles.picker}
@@ -171,11 +200,8 @@ export default function Agendamento() {
             </Picker>
           </View>
 
-          <Text style={styles.label}>Data</Text>
-          <TouchableOpacity
-            style={styles.dataBox}
-            onPress={() => setMostrarCalendario(true)}
-          >
+          <Text style={styles.label}>Data da Consulta</Text>
+          <TouchableOpacity style={styles.dataBox} onPress={() => setMostrarCalendario(true)}>
             <Text style={styles.dataTexto}>{formatarData(dataSelecionada)}</Text>
           </TouchableOpacity>
 
@@ -190,10 +216,7 @@ export default function Agendamento() {
                 locale="pt-BR"
               />
               {Platform.OS === 'ios' && (
-                <TouchableOpacity
-                  style={styles.botaoFecharData}
-                  onPress={() => setMostrarCalendario(false)}
-                >
+                <TouchableOpacity style={styles.botaoFecharData} onPress={() => setMostrarCalendario(false)}>
                   <Text style={styles.botaoFecharDataTexto}>Confirmar data</Text>
                 </TouchableOpacity>
               )}
@@ -208,6 +231,7 @@ export default function Agendamento() {
             {slotsMock.map((slot) => {
               const selecionado = slotSelecionado === slot.horario;
               const clicavel = podeSelecionar(slot.status);
+              
               return (
                 <TouchableOpacity
                   key={slot.horario}
