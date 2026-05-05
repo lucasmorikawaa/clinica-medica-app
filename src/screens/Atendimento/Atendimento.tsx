@@ -96,10 +96,6 @@ export default function RealizarConsulta() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTexto}>Clínica Médica</Text>
-      </View>
-
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.titulo}>Atendimento Médico</Text>
         <Text style={styles.subtitulo}>

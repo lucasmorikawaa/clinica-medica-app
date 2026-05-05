@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Agenda from '../screens/Agenda/Agenda';
 import Atendimento from '../screens/Atendimento/Atendimento';
 import DashBoard from '../screens/DashBoard/DashBoard';
-import Paciente from '../screens/Pacientes/Pacientes';
+import PacientesRoutes from '../screens/Pacientes/PacientesRoutes';
 
 const Tab = createBottomTabNavigator();
 
@@ -32,7 +32,7 @@ export default function TabRoutes() {
       <Tab.Screen name="Agenda" component={Agenda} />
       <Tab.Screen name="Atendimento" component={Atendimento} />
       <Tab.Screen name="DashBoard" component={DashBoard} />
-      <Tab.Screen name="Paciente" component={Paciente} />
+      <Tab.Screen name="Paciente" component={PacientesRoutes} />
     </Tab.Navigator>
   );
 }

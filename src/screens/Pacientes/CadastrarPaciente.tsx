@@ -21,7 +21,7 @@ interface Paciente {
   convenio?: string;
 }
 
-export const CadastrarPaciente = () => {
+export default function CadastrarPaciente() {
   const [nome, setNome] = useState('');
   const [cpf, setCpf] = useState('');
   const [dataNascimento, setDataNascimento] = useState('');

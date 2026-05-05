@@ -5,19 +5,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f0f2f5',
   },
-
-  header: {
-    backgroundColor: '#2563EB',
-    paddingTop: Platform.OS === 'ios' ? 50 : 36,
-    paddingBottom: 14,
-    paddingHorizontal: 16,
-  },
-  headerTexto: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-
   scroll: {
     padding: 16,
     paddingBottom: 32,
