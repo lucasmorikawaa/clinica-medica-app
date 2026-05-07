@@ -11,6 +11,7 @@ import { Input } from '../../components/Inputs/Input';
 import { Button } from '../../components/Buttons/Button';
 import { Card } from '../../components/Cards/Card';
 import { styles } from './CadastrarPacienteStyles';
+import { useNavigation } from '@react-navigation/native';
 
 interface Paciente {
   id: string;
@@ -22,6 +23,7 @@ interface Paciente {
 }
 
 export default function CadastrarPaciente() {
+  const navigation = useNavigation<any>();
   const [nome, setNome] = useState('');
   const [cpf, setCpf] = useState('');
   const [dataNascimento, setDataNascimento] = useState('');
@@ -46,6 +48,7 @@ export default function CadastrarPaciente() {
     };
 
     setPacientes([...pacientes, novoPaciente]);
+    
     
     Alert.alert('Sucesso', `Paciente ${nome} cadastrado com sucesso!`);
     
@@ -126,6 +129,7 @@ export default function CadastrarPaciente() {
               title="Cancelar" 
               variant="outline" 
               style={{ flex: 1, marginRight: 8 }} 
+              onPress={() => navigation.navigate('ListaPacientes')}
             />
             <Button 
               title="Cadastrar Paciente" 

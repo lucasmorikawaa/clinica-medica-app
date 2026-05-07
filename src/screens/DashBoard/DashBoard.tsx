@@ -3,7 +3,6 @@ import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Card } from '../../components/Cards/Card';
 import { styles } from './DashBoardStyles';
-import { Header } from '../../components/Headers/Header';
 
 interface StatCardProps {
   title: string;
