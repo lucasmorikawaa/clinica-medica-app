@@ -4,6 +4,7 @@ import Agenda from '../screens/Agenda/Agenda';
 import Atendimento from '../screens/Atendimento/Atendimento';
 import DashBoard from '../screens/DashBoard/DashBoard';
 import PacientesRoutes from '../screens/Pacientes/PacientesRoutes';
+import MedicosRoutes from '../screens/Medico/MedicosRoutes';
 
 const Tab = createBottomTabNavigator();
 
@@ -12,6 +13,7 @@ const icons: Record<string, { active: any; inactive: any }> = {
   Atendimento: { active: 'medical', inactive: 'medical-outline' },
   DashBoard: { active: 'stats-chart', inactive: 'stats-chart-outline' },
   Paciente: { active: 'people', inactive: 'people-outline' },
+  Medico: { active: 'person', inactive: 'person-outline' },
 };
 
 export default function TabRoutes() {
@@ -33,6 +35,7 @@ export default function TabRoutes() {
       <Tab.Screen name="Atendimento" component={Atendimento} />
       <Tab.Screen name="DashBoard" component={DashBoard} />
       <Tab.Screen name="Paciente" component={PacientesRoutes} />
+      <Tab.Screen name="Medico" component={MedicosRoutes} />
     </Tab.Navigator>
   );
 }
