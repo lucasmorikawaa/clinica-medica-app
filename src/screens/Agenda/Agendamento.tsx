@@ -1,12 +1,27 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Alert, Platform, ActivityIndicator } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { styles } from './AgendamentoStyles';
 
-type SlotStatus = 'L' | 'M' | 'C' | 'X' | 'B';
+import { db } from '../../config/Firebase';
+import { 
+  collection, 
+  getDocs, 
+  addDoc, 
+  updateDoc, 
+  doc, 
+  query, 
+  where, 
+  orderBy, 
+  limit 
+} from 'firebase/firestore';
+
+type SlotStatus = 'L' | 'M' | 'C' | 'X' | 'B' | 'CANCELADA';
+type TipoConsulta = 'Primeira Consulta' | 'Consulta Normal' | 'Retorno';
 
 type Slot = {
+  id?: string;
   horario: string;
   status: SlotStatus;
 };
@@ -14,7 +29,6 @@ type Slot = {
 type Paciente = {
   id: string;
   nome: string;
-  telefone?: string;
 };
 
 type Medico = {
@@ -23,136 +37,221 @@ type Medico = {
   especialidade: string;
 };
 
-type Consulta = {
-  id: string;
-  pacienteId: string;
-  medicoId: string;
-  horario: string;
-  status: 'M';
-};
-
-const pacientesMock: Paciente[] = [
-  { id: '1', nome: 'Enzo Aguiar', telefone: '(11) 98765-4321' },
-  { id: '2', nome: 'Lucas Keiji', telefone: '(11) 91234-5678' },
-  { id: '3', nome: 'Lucas Vieira', telefone: '(11) 99999-0000' },
-];
-
-const medicosMock: Medico[] = [
-  { id: '1', nome: 'Dr. Ricardo Alves', especialidade: 'Clínico Geral' },
-  { id: '2', nome: 'Dra. Ana Lima', especialidade: 'Cardiologia' },
-  { id: '3', nome: 'Dr. Paulo Mota', especialidade: 'Ortopedia' },
-];
-
-const slotsMock: Slot[] = [
-  { horario: '08:00', status: 'L' },
-  { horario: '08:30', status: 'L' },
-  { horario: '09:00', status: 'M' },
-  { horario: '09:30', status: 'L' },
-  { horario: '10:00', status: 'M' },
-  { horario: '10:30', status: 'L' },
-  { horario: '14:00', status: 'M' },
-  { horario: '14:30', status: 'L' },
-  { horario: '15:30', status: 'C' },
-  { horario: '16:00', status: 'B' },
-  { horario: '17:00', status: 'X' },
-  { horario: '17:30', status: 'L' },
-];
-
-export const consultasGlobaisMock: Consulta[] = [];
-
-function formatarData(date: Date): string {
-  const dia = String(date.getDate()).padStart(2, '0');
-  const mes = String(date.getMonth() + 1).padStart(2, '0');
-  const ano = date.getFullYear();
-  return `${dia}/${mes}/${ano}`;
-}
-
-function podeSelecionar(status: SlotStatus): boolean {
-  return status === 'L' || status === 'C';
-}
-
-function getLabelStatus(status: SlotStatus): string {
-  switch (status) {
-    case 'L': return 'Livre';
-    case 'M': return 'Marcado';
-    case 'C': return 'Cancelado (Paciente)';
-    case 'X': return 'Cancelado (Médico)';
-    case 'B': return 'Bloqueado';
-    default: return status;
-  }
-}
-
-function getSlotStyle(status: SlotStatus, selecionado: boolean) {
-  if (selecionado) return [styles.slot, styles.slotSelecionado];
-  switch (status) {
-    case 'L': return [styles.slot, styles.slotLivre];
-    case 'M': return [styles.slot, styles.slotMarcado];
-    case 'C': return [styles.slot, styles.slotCancelado];
-    case 'X': return [styles.slot, styles.slotCanceladoMedico];
-    case 'B': return [styles.slot, styles.slotBloqueado];
-    default: return [styles.slot];
-  }
-}
-
-function getSlotTextStyle(status: SlotStatus, selecionado: boolean) {
-  if (selecionado) return styles.slotTextoSelecionado;
-  switch (status) {
-    case 'L': return styles.slotTextoLivre;
-    case 'M': return styles.slotTextoMarcado;
-    case 'C': return styles.slotTextoCancelado;
-    case 'X': return styles.slotTextoCanceladoMedico;
-    case 'B': return styles.slotTextoBloqueado;
-    default: return {};
-  }
-}
-
 export default function Agendamento({ navigation }: any) {
+
+  const [pacientes, setPacientes] = useState<Paciente[]>([]);
+  const [medicos, setMedicos] = useState<Medico[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+
   const [paciente, setPaciente] = useState<Paciente | null>(null);
   const [medico, setMedico] = useState<Medico | null>(null);
-  
+  const [tipoConsulta, setTipoConsulta] = useState<TipoConsulta | ''>('');
   const [slotSelecionado, setSlotSelecionado] = useState<string | null>(null);
   const [dataSelecionada, setDataSelecionada] = useState<Date>(new Date());
   const [mostrarCalendario, setMostrarCalendario] = useState<boolean>(false);
 
-  function handleSelecionarSlot(slot: Slot) {
-    if (!podeSelecionar(slot.status)) return;
-    setSlotSelecionado(slot.horario === slotSelecionado ? null : slot.horario);
+  const [slots, setSlots] = useState<Slot[]>([
+    { horario: '08:00', status: 'L' },
+    { horario: '08:30', status: 'L' },
+    { horario: '09:00', status: 'M' },
+    { horario: '09:30', status: 'L' },
+    { horario: '10:00', status: 'M' },
+    { horario: '14:00', status: 'L' },
+    { horario: '15:30', status: 'C' },
+    { horario: '16:00', status: 'B' },
+  ]);
+
+  useEffect(() => {
+    async function carregarDados() {
+      try {
+        setLoading(true);
+        
+        const pacientesSnapshot = await getDocs(collection(db, 'Pacientes'));
+        const listaPacientes = pacientesSnapshot.docs.map(d => ({
+          id: d.id,
+          nome: d.data().nome
+        }));
+
+        const medicosSnapshot = await getDocs(collection(db, 'Medicos'));
+        const listaMedicos = medicosSnapshot.docs.map(d => ({
+          id: d.id,
+          nome: d.data().nome,
+          especialidade: d.data().especialidade || d.data().esp || 'Geral'
+        }));
+
+        setPacientes(listaPacientes);
+        setMedicos(listaMedicos);
+      } catch (error) {
+        console.error("Erro ao buscar dados do Firebase:", error);
+        Alert.alert("Erro", "Falha ao sincronizar dados com o banco.");
+      } finally {
+        setLoading(false);
+      }
+    }
+    carregarDados();
+  }, []);
+
+  useEffect(() => {
+  if (!paciente) {
+    setTipoConsulta('');
+    return;
   }
 
-  function handleDataChange(_event: any, selectedDate?: Date) {
-    if (Platform.OS === 'android') setMostrarCalendario(false);
-    if (selectedDate) setDataSelecionada(selectedDate);
+  const pacienteAtual: Paciente = paciente;
+
+  async function calcularTipoConsulta() {
+    try {
+      const q = query(
+        collection(db, 'Consultas'),
+        where('pacienteId', '==', pacienteAtual.id),
+        orderBy('data', 'desc'),
+        limit(1)
+      );
+      
+      const querySnapshot = await getDocs(q);
+
+      if (querySnapshot.empty) {
+        setTipoConsulta('Primeira Consulta');
+        return;
+      }
+
+      const ultimaConsulta = querySnapshot.docs[0].data();
+      const dataUltima = ultimaConsulta.data?.seconds 
+        ? new Date(ultimaConsulta.data.seconds * 1000) 
+        : new Date(ultimaConsulta.data);
+
+      const hoje = new Date();
+      const diferencaEmMilissegundos = Math.abs(hoje.getTime() - dataUltima.getTime());
+      const diferencaEmDias = Math.ceil(diferencaEmMilissegundos / (1000 * 60 * 60 * 24));
+
+      if (diferencaEmDias <= 30) {
+        setTipoConsulta('Retorno');
+      } else {
+        setTipoConsulta('Consulta Normal');
+      }
+    } catch (error) {
+      console.error("Erro na regra de negócio:", error);
+      setTipoConsulta('Consulta Normal');
+    }
   }
 
-  function handleConfirmar() {
-    if (!paciente || !medico || !slotSelecionado) {
-      Alert.alert('Atenção', 'Selecione paciente, médico e um horário disponível.');
+  calcularTipoConsulta();
+}, [paciente]);
+
+  async function handleConfirmar() {
+    if (!paciente || !medico || !slotSelecionado || !tipoConsulta) {
+      Alert.alert('Atenção', 'Selecione paciente, médico, tipo de consulta e um horário disponível.');
       return;
     }
 
-    const novaConsulta: Consulta = {
-      id: Math.random().toString(36).substring(2, 9),
-      pacienteId: paciente.id,
-      medicoId: medico.id,
-      horario: slotSelecionado,
-      status: 'M',
-    };
+    try {
+      setLoading(true);
 
-    consultasGlobaisMock.push(novaConsulta);
+      const dataFormatadaYMD = dataSelecionada.toISOString().split('T')[0];
 
+      await addDoc(collection(db, 'Consultas'), {
+        pacienteId: paciente.id,
+        medicoId: medico.id,
+        tipoConsulta,
+        data: dataFormatadaYMD,
+        hora: slotSelecionado,
+        status: 'Agendada'
+      });
+
+      Alert.alert('Sucesso', 'Consulta salva no Firebase com sucesso!', [
+        { text: 'OK', onPress: () => navigation && navigation.navigate('Confirmacao') }
+      ]);
+    } catch (error) {
+      console.error("Erro ao salvar consulta:", error);
+      Alert.alert("Erro", "Não foi possível gravar o agendamento.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const handleCancelarSlot = (horario: string, slotId?: string) => {
     Alert.alert(
-      'Sucesso',
-      'Consulta salva no estado global com status M!',
+      "Operação de Cancelamento",
+      "Deseja marcar essa agenda como cancelada?",
       [
-        {
-          text: 'OK',
-          onPress: () => {
-            if (navigation) {
-              navigation.navigate('Confirmacao');
-            }
-          }
-        }
+        { text: "Paciente Desistiu", onPress: () => executarCancelamentoBanco(horario, slotId) },
+        { text: "Paciente Ausente", onPress: () => executarCancelamentoBanco(horario, slotId) },
+        { text: "Voltar", style: "cancel" }
       ]
+    );
+  };
+
+  async function executarCancelamentoBanco(horario: string, slotId?: string) {
+    try {
+      if (slotId) {
+        await updateDoc(doc(db, 'Consultas', slotId), {
+          status: 'Cancelada'
+        });
+      }
+
+      setSlots(prev => prev.map(s => 
+        s.horario === horario ? { ...s, status: 'CANCELADA' } : s
+      ));
+
+      if (slotSelecionado === horario) setSlotSelecionado(null);
+      Alert.alert("Sucesso", "Status atualizado para Cancelada com sucesso!");
+    } catch (error) {
+      Alert.alert("Erro", "Não foi possível processar o cancelamento no Firestore.");
+    }
+  }
+
+  function formatarDataExibicao(date: Date): string {
+    const dia = String(date.getDate()).padStart(2, '0');
+    const mes = String(date.getMonth() + 1).padStart(2, '0');
+    const ano = date.getFullYear();
+    return `${dia}/${mes}/${ano}`;
+  }
+
+  function podeSelecionar(status: SlotStatus): boolean {
+    return status === 'L' || status === 'C';
+  }
+
+  function getLabelStatus(status: SlotStatus): string {
+    switch (status) {
+      case 'L': return 'Livre';
+      case 'M': return 'Marcado';
+      case 'C': return 'Cancelado (P)';
+      case 'X': return 'Cancelado (M)';
+      case 'B': return 'Bloqueado';
+      default: return status;
+    }
+  }
+
+  function getSlotStyle(status: SlotStatus, selecionado: boolean) {
+    if (selecionado) return [styles.slot, styles.slotSelecionado];
+    switch (status) {
+      case 'L': return [styles.slot, styles.slotLivre];
+      case 'M': return [styles.slot, styles.slotMarcado];
+      case 'C': return [styles.slot, styles.slotCancelado];
+      case 'X': return [styles.slot, styles.slotCanceladoMedico];
+      case 'B': return [styles.slot, styles.slotBloqueado];
+      default: return [styles.slot];
+    }
+  }
+
+  function getSlotTextStyle(status: SlotStatus, selecionado: boolean) {
+    if (selecionado) return styles.slotTextoSelecionado;
+    switch (status) {
+      case 'L': return styles.slotTextoLivre;
+      case 'M': return styles.slotTextoMarcado;
+      case 'C': return styles.slotTextoCancelado;
+      case 'X': return styles.slotTextoCanceladoMedico;
+      case 'B': return styles.slotTextoBloqueado;
+      default: return {};
+    }
+  }
+
+  if (loading && pacientes.length === 0) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#2563EB" />
+        <Text style={{ marginTop: 10, color: '#666' }}>Carregando dados da clínica...</Text>
+      </View>
     );
   }
 
@@ -170,13 +269,13 @@ export default function Agendamento({ navigation }: any) {
             <Picker
               selectedValue={paciente?.id || ''}
               onValueChange={(itemValue) => {
-                const pacienteEncontrado = pacientesMock.find(p => p.id === itemValue);
-                setPaciente(pacienteEncontrado || null);
+                const encontrado = pacientes.find(p => p.id === itemValue);
+                setPaciente(encontrado || null);
               }}
               style={styles.picker}
             >
               <Picker.Item label="Selecione o paciente" value="" color="#aaa" />
-              {pacientesMock.map((p) => (
+              {pacientes.map((p) => (
                 <Picker.Item key={p.id} label={p.nome} value={p.id} />
               ))}
             </Picker>
@@ -187,90 +286,86 @@ export default function Agendamento({ navigation }: any) {
             <Picker
               selectedValue={medico?.id || ''}
               onValueChange={(itemValue) => {
-                const medicoEncontrado = medicosMock.find(m => m.id === itemValue);
-                setMedico(medicoEncontrado || null);
+                const encontrado = medicos.find(m => m.id === itemValue);
+                setMedico(encontrado || null);
                 setSlotSelecionado(null);
               }}
               style={styles.picker}
             >
               <Picker.Item label="Selecione o médico" value="" color="#aaa" />
-              {medicosMock.map((m) => (
+              {medicos.map((m) => (
                 <Picker.Item key={m.id} label={`${m.nome} — ${m.especialidade}`} value={m.id} />
               ))}
             </Picker>
           </View>
 
+          <Text style={styles.label}>Tipo Consulta (Calculado de Forma Inteligente)</Text>
+          <View style={[styles.pickerWrapper, { backgroundColor: '#e2e8f0' }]}>
+            <Picker
+              selectedValue={tipoConsulta}
+              enabled={false}
+              style={styles.picker}
+            >
+              <Picker.Item label="Aguardando a seleção do paciente..." value="" color="#718096" />
+              <Picker.Item label="✨ Primeira Consulta" value="Primeira Consulta" />
+              <Picker.Item label="🔄 Consulta Normal" value="Consulta Normal" />
+              <Picker.Item label="📅 Retorno (Até 30 dias)" value="Retorno" />
+            </Picker>
+          </View>
+
           <Text style={styles.label}>Data da Consulta</Text>
           <TouchableOpacity style={styles.dataBox} onPress={() => setMostrarCalendario(true)}>
-            <Text style={styles.dataTexto}>{formatarData(dataSelecionada)}</Text>
+            <Text style={styles.dataTexto}>{formatarDataExibicao(dataSelecionada)}</Text>
           </TouchableOpacity>
 
           {mostrarCalendario && (
-            <View>
-              <DateTimePicker
-                value={dataSelecionada}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'calendar'}
-                minimumDate={new Date()}
-                onChange={handleDataChange}
-                locale="pt-BR"
-              />
-              {Platform.OS === 'ios' && (
-                <TouchableOpacity style={styles.botaoFecharData} onPress={() => setMostrarCalendario(false)}>
-                  <Text style={styles.botaoFecharDataTexto}>Confirmar data</Text>
-                </TouchableOpacity>
-              )}
-            </View>
+            <DateTimePicker
+              value={dataSelecionada}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'spinner' : 'calendar'}
+              minimumDate={new Date()}
+              onChange={(_, selectedDate) => {
+                if (Platform.OS === 'android') setMostrarCalendario(false);
+                if (selectedDate) setDataSelecionada(selectedDate);
+              }}
+              locale="pt-BR"
+            />
           )}
         </View>
 
         <View style={styles.card}>
           <Text style={styles.cardTitulo}>Horários Disponíveis</Text>
-
           <View style={styles.grade}>
-            {slotsMock.map((slot) => {
-              const selecionado = slotSelecionado === slot.horario;
-              const clicavel = podeSelecionar(slot.status);
-              
-              return (
-                <TouchableOpacity
-                  key={slot.horario}
-                  style={getSlotStyle(slot.status, selecionado)}
-                  onPress={() => handleSelecionarSlot(slot)}
-                  activeOpacity={clicavel ? 0.7 : 1}
-                  disabled={!clicavel}
-                >
-                  <Text style={[styles.slotHorario, getSlotTextStyle(slot.status, selecionado)]}>
-                    {slot.horario}
-                  </Text>
-                  <Text style={[styles.slotLabel, getSlotTextStyle(slot.status, selecionado)]}>
-                    {getLabelStatus(slot.status)}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <Text style={styles.legendaTitulo}>Legenda:</Text>
-          <View style={styles.legenda}>
-            {[
-              { status: 'L' as SlotStatus, style: styles.slotLivre, texto: styles.slotTextoLivre, label: 'L - Livre' },
-              { status: 'M' as SlotStatus, style: styles.slotMarcado, texto: styles.slotTextoMarcado, label: 'M - Marcado' },
-              { status: 'C' as SlotStatus, style: styles.slotCancelado, texto: styles.slotTextoCancelado, label: 'C - Cancelado (Paciente)' },
-              { status: 'X' as SlotStatus, style: styles.slotCanceladoMedico, texto: styles.slotTextoCanceladoMedico, label: 'X - Cancelado (Médico)' },
-              { status: 'B' as SlotStatus, style: styles.slotBloqueado, texto: styles.slotTextoBloqueado, label: 'B - Bloqueado' },
-            ].map((item) => (
-              <View key={item.status} style={[styles.legendaItem, item.style]}>
-                <Text style={[styles.legendaTexto, item.texto]}>{item.label}</Text>
-              </View>
-            ))}
+            {slots
+              .filter(s => s.status !== 'CANCELADA')
+              .map((slot) => {
+                const selecionado = slotSelecionado === slot.horario;
+                const clicavel = podeSelecionar(slot.status);
+                
+                return (
+                  <TouchableOpacity
+                    key={slot.horario}
+                    style={getSlotStyle(slot.status, selecionado)}
+                    onPress={() => clicavel && setSlotSelecionado(slot.horario === slotSelecionado ? null : slot.horario)}
+                    onLongPress={() => handleCancelarSlot(slot.horario, slot.id)}
+                    activeOpacity={clicavel ? 0.7 : 1}
+                  >
+                    <Text style={[styles.slotHorario, getSlotTextStyle(slot.status, selecionado)]}>
+                      {slot.horario}
+                    </Text>
+                    <Text style={[styles.slotLabel, getSlotTextStyle(slot.status, selecionado)]}>
+                      {getLabelStatus(slot.status)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
           </View>
         </View>
-
-        <TouchableOpacity style={styles.botaoConfirmar} onPress={handleConfirmar}>
-          <Text style={styles.botaoConfirmarTexto}>Confirmar Agendamento</Text>
-        </TouchableOpacity>
       </ScrollView>
+
+      <TouchableOpacity style={styles.botaoConfirmar} onPress={handleConfirmar}>
+        <Text style={styles.botaoConfirmarTexto}>Confirmar Agendamento</Text>
+      </TouchableOpacity>
     </View>
   );
 }
