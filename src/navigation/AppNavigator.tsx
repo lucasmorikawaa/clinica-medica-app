@@ -1,10 +1,10 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Ionicons } from '@expo/vector-icons'; 
+import { Ionicons } from '@expo/vector-icons';
 import Atendimento from '../screens/Atendimento/Atendimento';
 import DashBoard from '../screens/DashBoard/DashBoard';
 import PacientesRoutes from '../screens/Pacientes/PacientesRoutes';
 import MedicosRoutes from '../screens/Medico/MedicosRoutes';
-import AgendamentoRoutes from '../screens/Agenda/AgendamentoRoutes';
+import AgendamentoRoutes from '../screens/Agenda/AgendamentoRoutes'; 
 
 const Tab = createBottomTabNavigator();
 
@@ -33,7 +33,6 @@ export default function TabRoutes() {
     >
       <Tab.Screen name="Agendamento" component={AgendamentoRoutes} />
       <Tab.Screen name="Atendimento" component={Atendimento} />
-      <Tab.Screen name="DashBoard" component={DashBoard} />
       <Tab.Screen name="Paciente" component={PacientesRoutes} />
       <Tab.Screen name="Medico" component={MedicosRoutes} />
     </Tab.Navigator>
