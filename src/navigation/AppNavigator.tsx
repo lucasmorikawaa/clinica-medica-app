@@ -1,15 +1,15 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons'; 
-import Agenda from '../screens/Agenda/Agenda';
 import Atendimento from '../screens/Atendimento/Atendimento';
 import DashBoard from '../screens/DashBoard/DashBoard';
 import PacientesRoutes from '../screens/Pacientes/PacientesRoutes';
 import MedicosRoutes from '../screens/Medico/MedicosRoutes';
+import Agendamento from '../screens/Agenda/Agendamento';
 
 const Tab = createBottomTabNavigator();
 
 const icons: Record<string, { active: any; inactive: any }> = {
-  Agenda: { active: 'calendar', inactive: 'calendar-outline' },
+  Agendamento: { active: 'calendar', inactive: 'calendar-outline' },
   Atendimento: { active: 'medical', inactive: 'medical-outline' },
   DashBoard: { active: 'stats-chart', inactive: 'stats-chart-outline' },
   Paciente: { active: 'people', inactive: 'people-outline' },
@@ -31,7 +31,7 @@ export default function TabRoutes() {
         },
       })}
     >
-      <Tab.Screen name="Agenda" component={Agenda} />
+      <Tab.Screen name="Agendamento" component={Agendamento} />
       <Tab.Screen name="Atendimento" component={Atendimento} />
       <Tab.Screen name="DashBoard" component={DashBoard} />
       <Tab.Screen name="Paciente" component={PacientesRoutes} />
