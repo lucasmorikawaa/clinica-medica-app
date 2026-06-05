@@ -69,4 +69,10 @@ export const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  statCardTouchable: {
+    flex: 1, 
+    marginHorizontal: 4,
+    marginVertical: 4,
+  },
+
 });

@@ -1,68 +1,90 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, Modal, Alert } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import {View, Text, ScrollView, TouchableOpacity,TextInput, Modal, Alert, ActivityIndicator} from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import styles from './AtendimentoStyles';
+
+import { db } from '../../config/Firebase';
+import { collection, getDocs, doc, updateDoc, query, where } from 'firebase/firestore';
 
 type Consulta = {
   id: string;
   paciente: string;
+  pacienteId: string;
   medico: string;
+  medicoId: string;
   horario: string;
   convenio: string;
-  status: 'Confirmado';
-  dataNascimento: string;
-  sexo: string;
-  historico: string;
+  tipoConsulta: string;
+  status: string;
+  data: string;
   laudo: string;
   receita: string;
 };
 
-const consultasMock: Consulta[] = [
-  {
-    id: '1',
-    paciente: 'João Pedro Oliveira',
-    medico: 'Dra. Julia Ferreira',
-    horario: '10:00',
-    convenio: 'Bradesco Saúde',
-    status: 'Confirmado',
-    dataNascimento: '21/07/1990',
-    sexo: 'Masculino',
-    historico: 'Consultas anteriores disponíveis no histórico completo',
-    laudo: '',
-    receita: '',
-  },
-  {
-    id: '2',
-    paciente: 'Ana Clara Santos',
-    medico: 'Dr. Ricardo Alves',
-    horario: '10:30',
-    convenio: 'Unimed',
-    status: 'Confirmado',
-    dataNascimento: '05/03/1985',
-    sexo: 'Feminino',
-    historico: 'Paciente com histórico de hipertensão. Última consulta em 01/2026.',
-    laudo: '',
-    receita: '',
-  },
-  {
-    id: '3',
-    paciente: 'Carlos Eduardo Lima',
-    medico: 'Dr. Paulo Mota',
-    horario: '11:00',
-    convenio: 'Particular',
-    status: 'Confirmado',
-    dataNascimento: '14/11/1978',
-    sexo: 'Masculino',
-    historico: 'Sem consultas anteriores registradas.',
-    laudo: '',
-    receita: '',
-  },
-];
-
 export default function RealizarConsulta() {
-  const [consultas, setConsultas] = useState<Consulta[]>(consultasMock);
+  const [consultas, setConsultas] = useState<Consulta[]>([]);
+  const [loading, setLoading] = useState(true);
   const [consultaSelecionada, setConsultaSelecionada] = useState<Consulta | null>(null);
-  const [laudo, setLaudo] = useState<string>('');
-  const [receita, setReceita] = useState<string>('');
+  const [laudo, setLaudo] = useState('');
+  const [receita, setReceita] = useState('');
+  const [salvando, setSalvando] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      carregarConsultas();
+    }, [])
+  );
+
+  async function carregarConsultas() {
+    try {
+      setLoading(true);
+
+      const pacientesSnap = await getDocs(collection(db, 'Pacientes'));
+      const medicosSnap = await getDocs(collection(db, 'Medicos'));
+
+      const mapaPacientes: Record<string, any> = {};
+      pacientesSnap.docs.forEach(d => { mapaPacientes[d.id] = d.data(); });
+
+      const mapaMedicos: Record<string, any> = {};
+      medicosSnap.docs.forEach(d => { mapaMedicos[d.id] = d.data(); });
+
+      const q = query(
+        collection(db, 'Consultas'),
+        where('status', '==', 'Agendada')
+      );
+      const consultasSnap = await getDocs(q);
+
+      const lista: Consulta[] = consultasSnap.docs.map(d => {
+        const dados = d.data();
+        const pacienteData = mapaPacientes[dados.pacienteId] || {};
+        const medicoData = mapaMedicos[dados.medicoId] || {};
+
+        return {
+          id: d.id,
+          pacienteId: dados.pacienteId,
+          paciente: pacienteData.nome || 'Paciente não encontrado',
+          medicoId: dados.medicoId,
+          medico: medicoData.nome || 'Médico não encontrado',
+          horario: dados.hora || '',
+          convenio: pacienteData.convenio || 'Particular',
+          tipoConsulta: dados.tipoConsulta || '',
+          status: dados.status || '',
+          data: dados.data || '',
+          laudo: dados.laudo || '',
+          receita: dados.receita || '',
+        };
+      });
+
+      lista.sort((a, b) => a.horario.localeCompare(b.horario));
+      setConsultas(lista);
+
+    } catch (error) {
+      console.error('Erro ao carregar consultas:', error);
+      Alert.alert('Erro', 'Não foi possível carregar as consultas.');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   function handleAbrirAtendimento(consulta: Consulta) {
     setConsultaSelecionada(consulta);
@@ -76,22 +98,44 @@ export default function RealizarConsulta() {
     setReceita('');
   }
 
-  function handleFinalizar() {
+  async function handleFinalizar() {
     if (!laudo.trim()) {
       Alert.alert('Atenção', 'Preencha o laudo antes de finalizar.');
       return;
     }
 
-    setConsultas((prev) =>
-      prev.filter((c) => c.id !== consultaSelecionada?.id)
-    );
+    try {
+      setSalvando(true);
 
-    Alert.alert(
-      'Atendimento Finalizado',
-      `Paciente ${consultaSelecionada?.paciente} atendido com sucesso.`,
-    );
+      await updateDoc(doc(db, 'Consultas', consultaSelecionada!.id), {
+        laudo,
+        receita,
+        status: 'Realizada',
+      });
 
-    handleFecharModal();
+      setConsultas(prev => prev.filter(c => c.id !== consultaSelecionada?.id));
+
+      Alert.alert(
+        'Atendimento Finalizado',
+        `Paciente ${consultaSelecionada?.paciente} atendido com sucesso.`
+      );
+
+      handleFecharModal();
+    } catch (error) {
+      console.error('Erro ao finalizar atendimento:', error);
+      Alert.alert('Erro', 'Não foi possível salvar o atendimento.');
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#2563EB" />
+        <Text style={{ marginTop: 10, color: '#666' }}>Carregando consultas...</Text>
+      </View>
+    );
   }
 
   return (
@@ -110,26 +154,34 @@ export default function RealizarConsulta() {
 
         {consultas.map((consulta) => (
           <View key={consulta.id} style={styles.card}>
-
             <View style={styles.cardHeader}>
               <Text style={styles.cardNome}>{consulta.paciente}</Text>
               <View style={styles.badgeConfirmado}>
-                <Text style={styles.badgeTexto}>Confirmado</Text>
+                <Text style={styles.badgeTexto}>{consulta.tipoConsulta || 'Agendada'}</Text>
               </View>
             </View>
 
             <Text style={styles.cardInfo}>Médico: {consulta.medico}</Text>
             <Text style={styles.cardInfo}>Horário: {consulta.horario}</Text>
             <Text style={styles.cardInfo}>Convênio: {consulta.convenio}</Text>
+            <Text style={styles.cardInfo}>Data: {consulta.data}</Text>
 
-            <TouchableOpacity style={styles.botaoAtender} onPress={() => handleAbrirAtendimento(consulta)}>
+            <TouchableOpacity
+              style={styles.botaoAtender}
+              onPress={() => handleAbrirAtendimento(consulta)}
+            >
               <Text style={styles.botaoAtenderTexto}>Realizar Atendimento</Text>
             </TouchableOpacity>
           </View>
         ))}
       </ScrollView>
 
-      <Modal visible={consultaSelecionada !== null} animationType="slide" transparent={true} onRequestClose={handleFecharModal}>
+      <Modal
+        visible={consultaSelecionada !== null}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={handleFecharModal}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
@@ -145,36 +197,60 @@ export default function RealizarConsulta() {
               <View style={styles.secao}>
                 <View style={styles.secaoHeader}>
                   <Text style={styles.secaoIcone}>👤</Text>
-                  <Text style={styles.secaoTitulo}>Histórico do Paciente</Text>
+                  <Text style={styles.secaoTitulo}>Dados da Consulta</Text>
                 </View>
                 <View style={styles.secaoConteudo}>
-                  <Text style={styles.historicoDado}>
-                    Data de Nascimento: {consultaSelecionada?.dataNascimento}
-                  </Text>
-                  <Text style={styles.historicoDado}>
-                    Sexo: {consultaSelecionada?.sexo}
-                  </Text>
-                  <Text style={styles.historicoTexto}>
-                    {consultaSelecionada?.historico}
-                  </Text>
+                  <Text style={styles.historicoDado}>Tipo: {consultaSelecionada?.tipoConsulta}</Text>
+                  <Text style={styles.historicoDado}>Data: {consultaSelecionada?.data}</Text>
+                  <Text style={styles.historicoDado}>Horário: {consultaSelecionada?.horario}</Text>
+                  <Text style={styles.historicoDado}>Convênio: {consultaSelecionada?.convenio}</Text>
                 </View>
               </View>
+
               <View style={styles.secao}>
                 <View style={styles.secaoHeader}>
-                  <Text style={styles.secaoIcone}></Text>
+                  <Text style={styles.secaoIcone}>📋</Text>
                   <Text style={styles.secaoTitulo}>Laudo / Observações</Text>
                 </View>
-                <TextInput style={styles.textArea} placeholder="Digite o laudo da consulta..." placeholderTextColor="#aaa" value={laudo} onChangeText={setLaudo} multiline numberOfLines={5} textAlignVertical="top"/>
+                <TextInput
+                  style={styles.textArea}
+                  placeholder="Digite o laudo da consulta..."
+                  placeholderTextColor="#aaa"
+                  value={laudo}
+                  onChangeText={setLaudo}
+                  multiline
+                  numberOfLines={5}
+                  textAlignVertical="top"
+                />
               </View>
+
               <View style={styles.secao}>
-                <Text style={styles.secaoTitulo}>Receita / Prescrição</Text>
-                <TextInput style={[styles.textArea, styles.textAreaReceita]} placeholder="Digite a prescrição médica..." placeholderTextColor="#aaa" value={receita} onChangeText={setReceita} multiline numberOfLines={4} textAlignVertical="top"/>
+                <View style={styles.secaoHeader}>
+                  <Text style={styles.secaoIcone}>💊</Text>
+                  <Text style={styles.secaoTitulo}>Receita / Prescrição</Text>
+                </View>
+                <TextInput
+                  style={[styles.textArea, styles.textAreaReceita]}
+                  placeholder="Digite a prescrição médica..."
+                  placeholderTextColor="#aaa"
+                  value={receita}
+                  onChangeText={setReceita}
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
+                />
               </View>
-              <TouchableOpacity style={styles.botaoFinalizar} onPress={handleFinalizar}>
-                <Text style={styles.botaoFinalizarTexto}>Finalizar Atendimento</Text>
+
+              <TouchableOpacity
+                style={[styles.botaoFinalizar, salvando && { opacity: 0.6 }]}
+                onPress={handleFinalizar}
+                disabled={salvando}
+              >
+                <Text style={styles.botaoFinalizarTexto}>
+                  {salvando ? 'Salvando...' : 'Finalizar Atendimento'}
+                </Text>
               </TouchableOpacity>
             </ScrollView>
-
           </View>
         </View>
       </Modal>

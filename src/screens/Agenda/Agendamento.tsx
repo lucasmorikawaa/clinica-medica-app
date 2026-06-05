@@ -1,21 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, Platform, ActivityIndicator } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useFocusEffect } from '@react-navigation/native';
 import { styles } from './AgendamentoStyles';
 
 import { db } from '../../config/Firebase';
-import { 
-  collection, 
-  getDocs, 
-  addDoc, 
-  updateDoc, 
-  doc, 
-  query, 
-  where, 
-  orderBy, 
-  limit 
-} from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, doc, query, where, orderBy, limit } from 'firebase/firestore';
 
 type SlotStatus = 'L' | 'M' | 'C' | 'X' | 'B' | 'CANCELADA';
 type TipoConsulta = 'Primeira Consulta' | 'Consulta Normal' | 'Retorno';
@@ -37,166 +28,205 @@ type Medico = {
   especialidade: string;
 };
 
+const HORARIOS_PADRAO = [
+  '08:00', '08:30', '09:00', '09:30',
+  '10:00', '10:30', '11:00', '11:30',
+  '14:00', '14:30', '15:00', '15:30',
+  '16:00', '16:30', '17:00'
+];
+
 export default function Agendamento({ navigation }: any) {
 
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
   const [medicos, setMedicos] = useState<Medico[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loadingDados, setLoadingDados] = useState(true);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [salvando, setSalvando] = useState(false);
 
   const [paciente, setPaciente] = useState<Paciente | null>(null);
   const [medico, setMedico] = useState<Medico | null>(null);
   const [tipoConsulta, setTipoConsulta] = useState<TipoConsulta | ''>('');
   const [slotSelecionado, setSlotSelecionado] = useState<string | null>(null);
   const [dataSelecionada, setDataSelecionada] = useState<Date>(new Date());
-  const [mostrarCalendario, setMostrarCalendario] = useState<boolean>(false);
+  const [mostrarCalendario, setMostrarCalendario] = useState(false);
 
-  const [slots, setSlots] = useState<Slot[]>([
-    { horario: '08:00', status: 'L' },
-    { horario: '08:30', status: 'L' },
-    { horario: '09:00', status: 'M' },
-    { horario: '09:30', status: 'L' },
-    { horario: '10:00', status: 'M' },
-    { horario: '14:00', status: 'L' },
-    { horario: '15:30', status: 'C' },
-    { horario: '16:00', status: 'B' },
-  ]);
+  const [slots, setSlots] = useState<Slot[]>(
+    HORARIOS_PADRAO.map(h => ({ horario: h, status: 'L' }))
+  );
 
-  useEffect(() => {
-    async function carregarDados() {
-      try {
-        setLoading(true);
-        
-        const pacientesSnapshot = await getDocs(collection(db, 'Pacientes'));
-        const listaPacientes = pacientesSnapshot.docs.map(d => ({
-          id: d.id,
-          nome: d.data().nome
-        }));
+  useFocusEffect(
+    useCallback(() => {
+      carregarDados();
+    }, [])
+  );
 
-        const medicosSnapshot = await getDocs(collection(db, 'Medicos'));
-        const listaMedicos = medicosSnapshot.docs.map(d => ({
-          id: d.id,
-          nome: d.data().nome,
-          especialidade: d.data().especialidade || d.data().esp || 'Geral'
-        }));
+  async function carregarDados() {
+    try {
+      setLoadingDados(true);
 
-        setPacientes(listaPacientes);
-        setMedicos(listaMedicos);
-      } catch (error) {
-        console.error("Erro ao buscar dados do Firebase:", error);
-        Alert.alert("Erro", "Falha ao sincronizar dados com o banco.");
-      } finally {
-        setLoading(false);
-      }
+      const pacientesSnapshot = await getDocs(collection(db, 'Pacientes'));
+      const listaPacientes = pacientesSnapshot.docs.map(d => ({
+        id: d.id,
+        nome: d.data().nome
+      }));
+
+      const medicosSnapshot = await getDocs(collection(db, 'Medicos'));
+      const listaMedicos = medicosSnapshot.docs.map(d => ({
+        id: d.id,
+        nome: d.data().nome,
+        especialidade: d.data().especialidade || 'Geral'
+      }));
+
+      setPacientes(listaPacientes);
+      setMedicos(listaMedicos);
+
+      setPaciente(null);
+      setMedico(null);
+      setTipoConsulta('');
+      setSlotSelecionado(null);
+      setSlots(HORARIOS_PADRAO.map(h => ({ horario: h, status: 'L' })));
+
+    } catch (error) {
+      console.error('Erro ao buscar dados:', error);
+      Alert.alert('Erro', 'Falha ao sincronizar dados com o banco.');
+    } finally {
+      setLoadingDados(false);
     }
-    carregarDados();
-  }, []);
-
-  useEffect(() => {
-  if (!paciente) {
-    setTipoConsulta('');
-    return;
   }
 
-  const pacienteAtual: Paciente = paciente;
+  useEffect(() => {
+    if (!medico) {
+      setSlots(HORARIOS_PADRAO.map(h => ({ horario: h, status: 'L' })));
+      setSlotSelecionado(null);
+      return;
+    }
 
-  async function calcularTipoConsulta() {
+    carregarSlots();
+  }, [medico, dataSelecionada]);
+
+  async function carregarSlots() {
     try {
+      setLoadingSlots(true);
+
+      const dataFormatada = dataSelecionada.toISOString().split('T')[0];
+
       const q = query(
         collection(db, 'Consultas'),
-        where('pacienteId', '==', pacienteAtual.id),
-        orderBy('data', 'desc'),
-        limit(1)
+        where('medicoId', '==', medico!.id),
+        where('data', '==', dataFormatada)
       );
-      
-      const querySnapshot = await getDocs(q);
 
-      if (querySnapshot.empty) {
-        setTipoConsulta('Primeira Consulta');
-        return;
-      }
+      const snapshot = await getDocs(q);
 
-      const ultimaConsulta = querySnapshot.docs[0].data();
-      const dataUltima = ultimaConsulta.data?.seconds 
-        ? new Date(ultimaConsulta.data.seconds * 1000) 
-        : new Date(ultimaConsulta.data);
+      const mapaOcupados = new Map<string, SlotStatus>();
 
-      const hoje = new Date();
-      const diferencaEmMilissegundos = Math.abs(hoje.getTime() - dataUltima.getTime());
-      const diferencaEmDias = Math.ceil(diferencaEmMilissegundos / (1000 * 60 * 60 * 24));
+      snapshot.docs.forEach(d => {
+        const dados = d.data();
+        const hora: string = dados.hora;
+        const status: string = dados.status;
 
-      if (diferencaEmDias <= 30) {
-        setTipoConsulta('Retorno');
-      } else {
-        setTipoConsulta('Consulta Normal');
-      }
+        if (status === 'Cancelada') {
+          mapaOcupados.set(hora, 'C');
+        } else if (status === 'Agendada') {
+          mapaOcupados.set(hora, 'M');
+        }
+      });
+
+      const novosSlots: Slot[] = HORARIOS_PADRAO.map(horario => ({
+        horario,
+        status: mapaOcupados.get(horario) ?? 'L'
+      }));
+
+      setSlots(novosSlots);
+      setSlotSelecionado(null);
     } catch (error) {
-      console.error("Erro na regra de negócio:", error);
-      setTipoConsulta('Consulta Normal');
+      console.error('Erro ao carregar slots:', error);
+      setSlots(HORARIOS_PADRAO.map(h => ({ horario: h, status: 'L' })));
+    } finally {
+      setLoadingSlots(false);
     }
   }
-
-  calcularTipoConsulta();
-}, [paciente]);
 
   async function handleConfirmar() {
     if (!paciente || !medico || !slotSelecionado || !tipoConsulta) {
-      Alert.alert('Atenção', 'Selecione paciente, médico, tipo de consulta e um horário disponível.');
+      Alert.alert('Atenção', 'Selecione paciente, médico, um horário disponível e o tipo de consulta.');
       return;
     }
 
     try {
-      setLoading(true);
+      setSalvando(true);
 
-      const dataFormatadaYMD = dataSelecionada.toISOString().split('T')[0];
+      const dataFormatada = dataSelecionada.toISOString().split('T')[0];
 
-      await addDoc(collection(db, 'Consultas'), {
-        pacienteId: paciente.id,
-        medicoId: medico.id,
-        tipoConsulta,
-        data: dataFormatadaYMD,
-        hora: slotSelecionado,
-        status: 'Agendada'
-      });
+      const qConflito = query(
+        collection(db, 'Consultas'),
+        where('medicoId', '==', medico.id),
+        where('data', '==', dataFormatada),
+        where('hora', '==', slotSelecionado),
+        where('status', '==', 'Agendada')
+      );
 
-      Alert.alert('Sucesso', 'Consulta salva no Firebase com sucesso!', [
-        { text: 'OK', onPress: () => navigation && navigation.navigate('Confirmacao') }
+      const conflito = await getDocs(qConflito);
+
+      if (!conflito.empty) {
+        Alert.alert('Conflito', 'Este horário já está ocupado. Por favor, selecione outro.');
+        setSalvando(false);
+        return;
+      }
+
+      await addDoc(
+        collection(db, 'Consultas'),
+        {
+          pacienteId: paciente.id,
+          medicoId: medico.id,
+          data: dataFormatada,
+          hora: slotSelecionado,
+          tipoConsulta: tipoConsulta,
+          status: 'Agendada',
+          laudo: '',
+          receita: '',
+        }
+      );
+
+      Alert.alert('Sucesso', 'Consulta agendada com sucesso!', [
+        { text: 'OK', onPress: () => navigation.navigate('Confirmacao') }
       ]);
+
+      await carregarSlots();
     } catch (error) {
-      console.error("Erro ao salvar consulta:", error);
-      Alert.alert("Erro", "Não foi possível gravar o agendamento.");
+      console.error('Erro ao salvar consulta:', error);
+      Alert.alert('Erro', 'Não foi possível gravar o agendamento.');
     } finally {
-      setLoading(false);
+      setSalvando(false);
     }
   }
 
   const handleCancelarSlot = (horario: string, slotId?: string) => {
     Alert.alert(
-      "Operação de Cancelamento",
-      "Deseja marcar essa agenda como cancelada?",
+      'Cancelamento',
+      'Selecione o motivo:',
       [
-        { text: "Paciente Desistiu", onPress: () => executarCancelamentoBanco(horario, slotId) },
-        { text: "Paciente Ausente", onPress: () => executarCancelamentoBanco(horario, slotId) },
-        { text: "Voltar", style: "cancel" }
+        { text: 'Paciente Desistiu', onPress: () => executarCancelamento(horario, slotId) },
+        { text: 'Paciente Ausente', onPress: () => executarCancelamento(horario, slotId) },
+        { text: 'Voltar', style: 'cancel' }
       ]
     );
   };
 
-  async function executarCancelamentoBanco(horario: string, slotId?: string) {
+  async function executarCancelamento(horario: string, slotId?: string) {
     try {
       if (slotId) {
-        await updateDoc(doc(db, 'Consultas', slotId), {
-          status: 'Cancelada'
-        });
+        await updateDoc(doc(db, 'Consultas', slotId), { status: 'Cancelada' });
       }
 
-      setSlots(prev => prev.map(s => 
-        s.horario === horario ? { ...s, status: 'CANCELADA' } : s
-      ));
+      setSlots(prev =>
+        prev.map(s => s.horario === horario ? { ...s, status: 'CANCELADA' } : s)
+      );
 
       if (slotSelecionado === horario) setSlotSelecionado(null);
-      Alert.alert("Sucesso", "Status atualizado para Cancelada com sucesso!");
+      Alert.alert('Sucesso', 'Consulta cancelada com sucesso!');
     } catch (error) {
-      Alert.alert("Erro", "Não foi possível processar o cancelamento no Firestore.");
+      Alert.alert('Erro', 'Não foi possível cancelar no Firestore.');
     }
   }
 
@@ -246,7 +276,7 @@ export default function Agendamento({ navigation }: any) {
     }
   }
 
-  if (loading && pacientes.length === 0) {
+  if (loadingDados) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color="#2563EB" />
@@ -275,7 +305,7 @@ export default function Agendamento({ navigation }: any) {
               style={styles.picker}
             >
               <Picker.Item label="Selecione o paciente" value="" color="#aaa" />
-              {pacientes.map((p) => (
+              {pacientes.map(p => (
                 <Picker.Item key={p.id} label={p.nome} value={p.id} />
               ))}
             </Picker>
@@ -288,28 +318,27 @@ export default function Agendamento({ navigation }: any) {
               onValueChange={(itemValue) => {
                 const encontrado = medicos.find(m => m.id === itemValue);
                 setMedico(encontrado || null);
-                setSlotSelecionado(null);
               }}
               style={styles.picker}
             >
               <Picker.Item label="Selecione o médico" value="" color="#aaa" />
-              {medicos.map((m) => (
+              {medicos.map(m => (
                 <Picker.Item key={m.id} label={`${m.nome} — ${m.especialidade}`} value={m.id} />
               ))}
             </Picker>
           </View>
 
-          <Text style={styles.label}>Tipo Consulta (Calculado de Forma Inteligente)</Text>
-          <View style={[styles.pickerWrapper, { backgroundColor: '#e2e8f0' }]}>
+          <Text style={styles.label}>Tipo de Consulta</Text>
+          <View style={styles.pickerWrapper}>
             <Picker
               selectedValue={tipoConsulta}
-              enabled={false}
+              onValueChange={(itemValue) => setTipoConsulta(itemValue as TipoConsulta)}
               style={styles.picker}
             >
-              <Picker.Item label="Aguardando a seleção do paciente..." value="" color="#718096" />
-              <Picker.Item label="✨ Primeira Consulta" value="Primeira Consulta" />
-              <Picker.Item label="🔄 Consulta Normal" value="Consulta Normal" />
-              <Picker.Item label="📅 Retorno (Até 30 dias)" value="Retorno" />
+              <Picker.Item label="Selecione o tipo de consulta" value="" color="#aaa" />
+              <Picker.Item label="Primeira Consulta" value="Primeira Consulta" />
+              <Picker.Item label="Consulta Normal" value="Consulta Normal" />
+              <Picker.Item label="Retorno" value="Retorno" />
             </Picker>
           </View>
 
@@ -328,43 +357,58 @@ export default function Agendamento({ navigation }: any) {
                 if (Platform.OS === 'android') setMostrarCalendario(false);
                 if (selectedDate) setDataSelecionada(selectedDate);
               }}
-              locale="pt-BR"
             />
           )}
         </View>
 
         <View style={styles.card}>
           <Text style={styles.cardTitulo}>Horários Disponíveis</Text>
-          <View style={styles.grade}>
-            {slots
-              .filter(s => s.status !== 'CANCELADA')
-              .map((slot) => {
-                const selecionado = slotSelecionado === slot.horario;
-                const clicavel = podeSelecionar(slot.status);
-                
-                return (
-                  <TouchableOpacity
-                    key={slot.horario}
-                    style={getSlotStyle(slot.status, selecionado)}
-                    onPress={() => clicavel && setSlotSelecionado(slot.horario === slotSelecionado ? null : slot.horario)}
-                    onLongPress={() => handleCancelarSlot(slot.horario, slot.id)}
-                    activeOpacity={clicavel ? 0.7 : 1}
-                  >
-                    <Text style={[styles.slotHorario, getSlotTextStyle(slot.status, selecionado)]}>
-                      {slot.horario}
-                    </Text>
-                    <Text style={[styles.slotLabel, getSlotTextStyle(slot.status, selecionado)]}>
-                      {getLabelStatus(slot.status)}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-          </View>
+
+          {loadingSlots ? (
+            <ActivityIndicator size="small" color="#2563EB" style={{ marginVertical: 20 }} />
+          ) : (
+            <View style={styles.grade}>
+              {slots
+                .filter(s => s.status !== 'CANCELADA')
+                .map(slot => {
+                  const selecionado = slotSelecionado === slot.horario;
+                  const clicavel = podeSelecionar(slot.status);
+
+                  return (
+                    <TouchableOpacity
+                      key={slot.horario}
+                      style={getSlotStyle(slot.status, selecionado)}
+                      onPress={() =>
+                        clicavel &&
+                        setSlotSelecionado(
+                          slot.horario === slotSelecionado ? null : slot.horario
+                        )
+                      }
+                      onLongPress={() => handleCancelarSlot(slot.horario, slot.id)}
+                      activeOpacity={clicavel ? 0.7 : 1}
+                    >
+                      <Text style={[styles.slotHorario, getSlotTextStyle(slot.status, selecionado)]}>
+                        {slot.horario}
+                      </Text>
+                      <Text style={[styles.slotLabel, getSlotTextStyle(slot.status, selecionado)]}>
+                        {getLabelStatus(slot.status)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+            </View>
+          )}
         </View>
       </ScrollView>
 
-      <TouchableOpacity style={styles.botaoConfirmar} onPress={handleConfirmar}>
-        <Text style={styles.botaoConfirmarTexto}>Confirmar Agendamento</Text>
+      <TouchableOpacity
+        style={[styles.botaoConfirmar, salvando && { opacity: 0.6 }]}
+        onPress={handleConfirmar}
+        disabled={salvando}
+      >
+        <Text style={styles.botaoConfirmarTexto}>
+          {salvando ? 'Salvando...' : 'Confirmar Agendamento'}
+        </Text>
       </TouchableOpacity>
     </View>
   );

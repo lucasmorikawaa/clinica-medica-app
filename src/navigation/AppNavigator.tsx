@@ -4,7 +4,7 @@ import Atendimento from '../screens/Atendimento/Atendimento';
 import DashBoard from '../screens/DashBoard/DashBoard';
 import PacientesRoutes from '../screens/Pacientes/PacientesRoutes';
 import MedicosRoutes from '../screens/Medico/MedicosRoutes';
-import Agendamento from '../screens/Agenda/Agendamento';
+import AgendamentoRoutes from '../screens/Agenda/AgendamentoRoutes';
 
 const Tab = createBottomTabNavigator();
 
@@ -31,7 +31,7 @@ export default function TabRoutes() {
         },
       })}
     >
-      <Tab.Screen name="Agendamento" component={Agendamento} />
+      <Tab.Screen name="Agendamento" component={AgendamentoRoutes} />
       <Tab.Screen name="Atendimento" component={Atendimento} />
       <Tab.Screen name="DashBoard" component={DashBoard} />
       <Tab.Screen name="Paciente" component={PacientesRoutes} />
