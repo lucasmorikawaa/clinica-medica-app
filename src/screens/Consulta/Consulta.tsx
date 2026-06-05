@@ -1,17 +1,9 @@
 import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  ScrollView, 
-  TouchableOpacity, 
-  Alert, 
-  Platform 
-} from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import styles from './ConsultaStyles';
 
-// Tipagem conforme especificação
 type SlotStatus = 'L' | 'M' | 'C' | 'X' | 'B' | 'CANCELADA';
 type MotivoCancelamento = 'PACIENTE' | 'AUSENTE';
 
@@ -28,7 +20,6 @@ export default function AgendarConsulta() {
   const [dataSelecionada, setDataSelecionada] = useState<Date>(new Date());
   const [mostrarCalendario, setMostrarCalendario] = useState<boolean>(false);
 
-  // Estado dos slots para permitir a atualização dinâmica (Cancelamento)
   const [slots, setSlots] = useState<Slot[]>([
     { horario: '08:00', status: 'L' },
     { horario: '08:30', status: 'L' },
@@ -42,7 +33,6 @@ export default function AgendarConsulta() {
     return date.toLocaleDateString('pt-BR');
   };
 
-  // Função de Cancelamento conforme especificação técnica
   const handleCancelarSlot = (horario: string) => {
     Alert.alert(
       "Cancelar Consulta",
@@ -71,7 +61,6 @@ export default function AgendarConsulta() {
     Alert.alert('Sucesso', 'Consulta agendada com sucesso!');
   }
 
-  // Helpers de Estilo usando o seu arquivo de Styles
   const getSlotContainerStyle = (status: SlotStatus, selecionado: boolean) => {
     if (selecionado) return [styles.slot, styles.slotSelecionado];
     if (status === 'L') return [styles.slot, styles.slotLivre];
@@ -134,7 +123,6 @@ export default function AgendarConsulta() {
         <View style={styles.card}>
           <Text style={styles.cardTitulo}>Horários Disponíveis</Text>
           <View style={styles.grade}>
-            {/* CRITÉRIO DE ACEITE: Não aparece mais nas listas ativas se estiver CANCELADA */}
             {slots
               .filter(s => s.status !== 'CANCELADA')
               .map((slot) => {

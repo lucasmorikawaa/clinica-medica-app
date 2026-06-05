@@ -5,7 +5,9 @@ export default function Confirmacao({ navigation }: any) {
   return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
       <Text style={{ fontSize: 24, marginBottom: 20 }}>✅ Consulta Agendada!</Text>
-      <TouchableOpacity onPress={() => navigation.navigate('Agendamento')}>
+      <TouchableOpacity
+        onPress={() => navigation.navigate('Agendamento', { screen: 'AgendamentoPrincipal' })}
+      >
         <Text>Novo Agendamento</Text>
       </TouchableOpacity>
     </View>

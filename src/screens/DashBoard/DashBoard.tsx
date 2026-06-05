@@ -30,7 +30,6 @@ export default function DashBoard() {
           <Text style={styles.subtitle}>Visão geral da clínica</Text>
         </View>
 
-        {/* Grid de Estatísticas */}
         <View style={styles.statsGrid}>
           <StatCard 
             title="Consultas Hoje" 
@@ -58,7 +57,6 @@ export default function DashBoard() {
           />
         </View>
 
-        {/* Seção de Atalhos Rápidos */}
         <Card style={styles.shortcutsCard}>
           <Text style={styles.sectionTitle}>Atalhos Rápidos</Text>
           
